@@ -1,0 +1,7 @@
+program micro05;
+var
+    x : read;
+begin
+    x := 4.4;
+
+end.
