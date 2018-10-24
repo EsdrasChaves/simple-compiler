@@ -64,8 +64,12 @@ let novalinha = '\r' | '\n' | "\r\n"
 rule token = parse
     brancos { token lexbuf }
     | novalinha { incr_num_linha lexbuf; token lexbuf }
-    | '{' { comentario_in_line 0 lexbuf }
-    | "{*" { comentario_bloco 0 lexbuf }
+    | '{' { let pos = lexbuf.lex_curr_p in
+                    let lin = pos.pos_lnum
+                    and col = pos.pos_cnum - pos.pos_bol - 1 in comentario_in_line lin col 0 lexbuf }
+    | "{*" { let pos = lexbuf.lex_curr_p in
+                    let lin = pos.pos_lnum
+                    and col = pos.pos_cnum - pos.pos_bol - 1 in comentario_bloco lin col 0 lexbuf }
     | '+' { MAIS }
     | '-' { MENOS }
     | '*' { ASTER }
@@ -138,7 +142,7 @@ rule token = parse
                     leia_string lin col buffer lexbuf }
         | "\\n"  { Buffer.add_char buffer '\n' ;
                     leia_string lin col buffer lexbuf }
-        | '\\' ''' { Buffer.add_char buffer '"' ;
+        | '\\' ''' { Buffer.add_char buffer ''' ;
                     leia_string lin col buffer lexbuf }
         | '\\' '\\' { Buffer.add_char buffer '\\' ;
                     leia_string lin col buffer lexbuf }
@@ -146,19 +150,19 @@ rule token = parse
                     leia_string lin col buffer lexbuf }
         | eof  { erro lin col "A string não foi fechada"}
 
-    and comentario_bloco n = parse
+    and comentario_bloco lin col n = parse
         "*}" { if n=0 then token lexbuf
-                else comentario_bloco (n-1) lexbuf }
-        | "{*"  { comentario_bloco (n+1) lexbuf }
+                else comentario_bloco lin col (n-1) lexbuf }
+        | "{*"  { comentario_bloco lin col (n+1) lexbuf }
         | novalinha { incr_num_linha lexbuf;
-                    comentario_bloco n lexbuf }
-        | _  { comentario_bloco n lexbuf }
-        | eof { failwith "Comentário de bloco não fechado" }
+                    comentario_bloco lin col n lexbuf }
+        | _  { comentario_bloco lin col n lexbuf }
+        | eof { erro lin col "Comentário de bloco não fechado" }
 
-    and comentario_in_line n = parse
+    and comentario_in_line lin col n = parse
         '}' { if n=0 then token lexbuf
-                else comentario_in_line (n-1) lexbuf }
-        | '{'  { comentario_in_line (n+1) lexbuf }
-        | novalinha { failwith "Comentário de linha não fechado" }
-        | _  { comentario_in_line n lexbuf }
-        | eof { failwith "Comentário de linha não fechado" }
+                else comentario_in_line lin col (n-1) lexbuf }
+        | '{'  { comentario_in_line lin col (n+1) lexbuf }
+        | novalinha { erro lin col "Comentário de linha não fechado" }
+        | _  { comentario_in_line lin col n lexbuf }
+        | eof { erro lin col "Comentário de linha não fechado" }
