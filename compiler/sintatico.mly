@@ -1,57 +1,60 @@
 %{
+open Lexing
 open Ast
+open Sast
 %}
 
-%token <int> LITINT
-%token <float> LITREAL
-%token <string> LITSTRING
-%token <bool> LITBOOL
-%token <string> ID
-%token MAIS MENOS MULTIPLICA DIVIDE IGUAL
-%token MODULO
-%token MENOR MAIOR
-%token DIFERENTE
-%token APAR FPAR
-%token PONTO VIRG DPONTOS PVIRG
-%token MENORIGUAL MAIORIGUAL
-%token E OU NOT
-%token ATRIB
-%token PROGRAM
-%token BEGIN
-%token END
-%token ESCREVA
-%token ESCREVALN
-%token LEIA
-%token LEIALN
-%token VAR
-%token STRING INTEGER REAL BOOLEAN
-%token IF THEN ELSE
-%token FOR TO DO WHILE CASE OF
-%token FUNCTION
+%token <int * Lexing.position> LITINT
+%token <float * Lexing.position> LITREAL
+%token <string * Lexing.position> LITSTRING
+%token <bool * Lexing.position> LITBOOL
+%token <string * Lexing.position> ID
+%token <Lexing.position> MAIS MENOS MULTIPLICA DIVIDE IGUAL
+%token <Lexing.position> MODULO
+%token <Lexing.position> MENOR MAIOR
+%token <Lexing.position> DIFERENTE
+%token <Lexing.position> APAR FPAR
+%token <Lexing.position> PONTO VIRG DPONTOS PVIRG
+%token <Lexing.position> MENORIGUAL MAIORIGUAL
+%token <Lexing.position> E OU
+%token <Lexing.position> ATRIB
+%token <Lexing.position> PROGRAM
+%token <Lexing.position> BEGIN
+%token <Lexing.position> END
+%token <Lexing.position> ESCREVA
+%token <Lexing.position> ESCREVALN
+%token <Lexing.position> LEIA
+%token <Lexing.position> LEIALN
+%token <Lexing.position> VAR
+%token <Lexing.position> RETURN
+%token <Lexing.position> STRING INTEGER REAL BOOLEAN
+%token <Lexing.position> IF THEN ELSE
+%token <Lexing.position> FOR TO DO WHILE CASE OF
+%token <Lexing.position> FUNCTION
 %token EOF
 
 %left OU
 %left E
-%left NOT
 %left IGUAL DIFERENTE MAIOR MENOR MAIORIGUAL MENORIGUAL
 %left MAIS MENOS
 %left MULTIPLICA DIVIDE MODULO
 
-%start <Ast.programa> programa
+%start <Sast.expression Ast.programa> programa
 
 %%
 
-programa: PROGRAM id=ID PVIRG bk=block PONTO EOF { Program (id, bk) }
+programa: PROGRAM id=ID PVIRG 
+            VAR
+            ds = variable_declaration*
+            fs = function_declaration*
+            BEGIN
+                cs = statement*
+            END PONTO
+            EOF { Program (id, List.flatten ds, fs, cs) }
 
-block: vdp = variable_declaration_part?
-       pdp = function_declaration_part* 
-       sp = statement_part { Block(vdp, pdp, sp) }
 
-variable_declaration_part: VAR
-                            v=nonempty_list(vd=variable_declaration PVIRG { vd })
-                            { VarDeclarationPart v }
+variable_declaration: ids = separated_nonempty_list(VIRG, ID) DPONTOS t = tipo PVIRG{ List.map (fun id -> DecVar (id,t)) ids }
 
-variable_declaration: ids = separated_nonempty_list(VIRG, ID) DPONTOS t = tipo { List.map (fun id -> DecVar (id,t)) ids }
 
 tipo: | t = simple_type { t }
 
@@ -60,16 +63,20 @@ simple_type: | INTEGER { TypeInteger }
              | BOOLEAN { TypeBoolean }
              | STRING { TypeString }
 
-parameters: ids = separated_nonempty_list(VIRG, ID) DPONTOS t=simple_type { List.map (fun id -> Parameters (id,t)) ids }
+parameters: nome = ID DPONTOS t = tipo { (nome, t) }
 
-function_declaration_part: fd=function_declaration PVIRG { fd }
-
-function_declaration: FUNCTION id=ID APAR p=parameters FPAR DPONTOS tp=simple_type PVIRG bk=block { Function (id, p, tp, bk )}
-
-statement_part: BEGIN stb =  statement_block?  END { StatementPart stb }
-
-
-statement_block: sts = nonempty_list(st = statement PVIRG {st}) { sts }
+function_declaration: FUNCTION id=ID APAR formais = separated_list(PVIRG, parameters) FPAR DPONTOS tp=simple_type PVIRG
+                            VAR
+                            ds = variable_declaration*
+                            BEGIN
+                                cs=statement*
+                            END PVIRG { Function {
+                                fn_nome = id;
+                                fn_tiporet = tp;
+                                fn_formais = formais;
+                                fn_locais = List.flatten ds;
+                                fn_corpo = cs 
+                            }}
 
 statement: | st = assignment_statement { st }
            | st = read_statement { st }
@@ -78,54 +85,68 @@ statement: | st = assignment_statement { st }
            | st = if_statement { st }
            | st = while_statement { st }
            | st = for_statement { st }
-           | st = case_statement { st }
+           | st = case_statement { st }   
+           | st = return_statement { st }
 
-assignment_statement: v=variable ATRIB e=expression { CmdAtrib(v, e)}
+assignment_statement: v=expression ATRIB e=expression PVIRG { CmdAtrib(v, e)}
 
-read_statement: LEIA APAR xs=separated_nonempty_list(VIRG, expression) FPAR {CmdRead xs}
-                |LEIALN APAR xs=separated_nonempty_list(VIRG, expression) FPAR {CmdReadLn xs} 
+function_statement: exp=chamada PVIRG {CmdFunctionCall exp }
 
-write_statement: ESCREVA APAR xs=separated_nonempty_list(VIRG, expression) FPAR {CmdWrite xs}
-                |ESCREVALN APAR xs=separated_nonempty_list(VIRG, expression) FPAR {CmdWriteLn xs} 
-
-function_statement: id = ID APAR p=option(arg=separated_nonempty_list(VIRG, expression) {arg}) FPAR {CmdFunctionCall (id, p)}
+chamada: id = ID APAR p=separated_list(VIRG, expression) FPAR {ExpChamadaF (id, p)}
 
 
-if_statement: IF test=expression THEN st=statement_part el=option(ELSE st2=statement_part { st2 })  { CmdIf (test, st, el) }
+if_statement: IF test=expression THEN 
+              BEGIN
+                st=statement*
+              END
+                el=option(ELSE BEGIN st2=statement* END { st2 }) 
+              PVIRG  { CmdIf (test, st, el) }
 
-while_statement: WHILE test=expression DO st=statement_part { CmdWhile (test, st)}
+read_statement: LEIA APAR xs=separated_nonempty_list(VIRG, expression) FPAR PVIRG {CmdRead xs}
+                |LEIALN APAR xs=separated_nonempty_list(VIRG, expression) FPAR PVIRG {CmdReadLn xs} 
 
-for_statement: FOR v=variable ATRIB ex=expression TO e=expression DO st=statement_part { CmdFor(v,ex,e,st) }
+write_statement: ESCREVA APAR xs=separated_nonempty_list(VIRG, expression) FPAR PVIRG {CmdWrite xs}
+                |ESCREVALN APAR xs=separated_nonempty_list(VIRG, expression) FPAR PVIRG {CmdWriteLn xs} 
 
-case_statement: CASE v=variable OF c = cases+ default=option(ELSE st=statement_part PVIRG {st}) END {CmdCase(v,c,default)}
+for_statement: FOR v=expression ATRIB ex=expression TO e=expression DO 
+               BEGIN
+                    st=statement*
+               END PVIRG { CmdFor(v,ex,e,st) }
 
-cases: e=expression DPONTOS st=statement PVIRG { Case(e, st) }
+while_statement: WHILE test=expression DO 
+                 BEGIN
+                    st=statement*
+                 END PVIRG { CmdWhile (test, st)}
+
+return_statement: RETURN e=expression? PVIRG { CmdRetorno e}
+
+case_statement: CASE v=expression OF c = cases+ default=option(ELSE BEGIN st=statement END PVIRG {st}) END PVIRG {CmdCase(v,c,default)}
+
+cases: e=expression DPONTOS st=statement { Case(e, st) }
 
 expression: | v=variable { ExpVar v }
             | i=LITINT { ExpInt i }
-            | r=LITREAL { ExpReal r }
             | s=LITSTRING { ExpString s }
             | b=LITBOOL { ExpBool b }
-            | MENOS e=expression { ExpMen e }
-            | NOT e=expression { ExpNot e }
+            | r=LITREAL { ExpReal r }
             | e1=expression op=oper e2=expression { ExpOp (op, e1, e2)}
-            | APAR e=expression FPAR { Expar (e) }
-            | c = function_statement {ExpChamadaF c}
+            | APAR e=expression FPAR {e}
+            | c = chamada {c}
 
 %inline oper:
-    | MAIS { Mais }
-    | MENOS { Menos }
-    | MULTIPLICA { Mult }
-    | DIVIDE { Div }
-    | MODULO { Mod }
-    | MENOR { Menor }
-    | IGUAL { Igual }
-    | MENORIGUAL { MenorIgual }
-    | MAIORIGUAL { MaiorIgual }
-    | MAIOR { Maior }
-    | DIFERENTE { Difer }
-    | E { And }
-    | OU { Or }
+    | pos = MAIS { (Mais, pos) }
+    | pos = MENOS { (Menos, pos) }
+    | pos = MULTIPLICA { (Mult, pos) }
+    | pos = DIVIDE { (Div, pos) }
+    | pos = MODULO { (Mod, pos) }
+    | pos = MENOR { (Menor, pos) }
+    | pos = IGUAL { (Igual, pos) }
+    | pos = MENORIGUAL { (MenorIgual, pos) }
+    | pos = MAIORIGUAL { (MaiorIgual, pos) }
+    | pos = MAIOR { (Maior, pos) }
+    | pos = DIFERENTE { (Difer, pos) }
+    | pos = E { (And, pos) }
+    | pos = OU { (Or, pos) }
 
 
 variable: | x=ID { VarSimples x }

@@ -1,57 +1,61 @@
+open Lexing
+
 type id = string
+type 'a pos =  'a * Lexing.position
 
-type programa = Program of id * block
-and block = Block of variable_declaration_part option * function_declaration_part list * statement_part
 
-and variable_declaration_part = VarDeclarationPart of variable_declarations list
-and variable_declarations = variable_declaration list
-and variable_declaration = DecVar of id * tipo
+type 'expr programa = Program of (id pos) * declarations * ('expr function_declarations) * ('expr statements)
 
-and function_declaration_part = function_declaration
-and function_declaration = Function of id * parameters * tipo * block
 
-and parameters = parameter list
-and parameter = Parameters of id * tipo
+and declarations = declaration list 
+and 'expr function_declarations = ('expr function_declaration) list
+and 'expr statements = ('expr statement) list
+
+and declaration = DecVar of (id pos) * tipo
+
+and 'expr function_declaration = Function of ('expr decfun)
+
+and 'expr decfun = {
+
+  fn_nome:    id pos;
+  fn_tiporet: tipo;
+  fn_formais: (id pos * tipo) list;
+  fn_locais:  declarations;
+  fn_corpo:   'expr statements
+}
+
 
 and tipo = | TypeInteger
            | TypeReal
            | TypeBoolean
            | TypeString
+           | TipoVoid
 
-and cases = Case of expression * statement
+and 'expr statement =   
+                | CmdAtrib of 'expr * 'expr
+                | CmdIf of 'expr * ('expr statements) * ('expr statements option)
+                | CmdRead of ('expr expressions)
+                | CmdWrite of ('expr expressions)
+                | CmdReadLn of ('expr expressions)
+                | CmdWriteLn of ('expr expressions)
+                | CmdWhile of 'expr * ('expr statements)
+                | CmdFor of 'expr * 'expr * 'expr * ('expr statements)
+                | CmdCase of 'expr * ('expr cases list) * ('expr statement option )
+                | CmdRetorno of 'expr option
+                | CmdFunctionCall of 'expr
 
-and statement_part = StatementPart of statement_block option
 
-and statement_block = statement list
+and 'expr cases = Case of 'expr * ('expr statement)
 
-and statement =   | CmdAtrib of variable * expression
-                  | CmdRead of expressions
-                  | CmdReadLn of expressions
-                  | CmdWrite of expressions
-                  | CmdWriteLn of expressions
-                  | CmdFunctionCall of id * expressions option
-                  | CmdIf of expression * statement_part * statement_part option
-                  | CmdWhile of expression * statement_part
-                  | CmdFor of variable * expression * expression * statement_part
-                  | CmdCase of variable * cases list * statement_part option
-                  | Statement of statement
 
-and variables = variable list
-and variable = VarSimples of id
-               | VarCampo of variable * id
+                  
 
-and expression = ExpVar of variable
-                | ExpInt of int 
-                | ExpString of string
-                | ExpBool of bool
-                | ExpMen of expression
-                | ExpNot of expression
-                | ExpReal of float
-                | ExpOp of oper * expression * expression
-                | Expar of expression
-                | ExpChamadaF of statement
+and 'expr variables = ('expr variable) list
+and 'expr variable = VarSimples of id pos
+               | VarCampo of ('expr variable) * (id pos)
 
-and expressions = expression list
+and 'expr expressions = 'expr list
+
 
 and oper = | Mais
            |  Menos
