@@ -3,4 +3,4 @@
 
 A compiler that compiles Pascal into WebAssembly written in Ocaml.
 
-This project was built for the Compiler Construction Course
+This project was built for the Compiler Construction course
